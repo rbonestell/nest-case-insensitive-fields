@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A small NestJS library (published to npm as `nestjs-case-insensitive-fields`) that rewrites incoming request `body` and `query` keys to match DTO property names case-insensitively, recursively through nested DTOs, before `ValidationPipe` runs. No decorators required by consumers. README.md's "How it works", "Rules" and "Limits" sections are accurate and must be updated alongside any behavior change.
+A small NestJS library (published to npm as `nest-case-insensitive-fields`) that rewrites incoming request `body` and `query` keys to match DTO property names case-insensitively, recursively through nested DTOs, before `ValidationPipe` runs. No decorators required by consumers. README.md's "How it works", "Rules" and "Limits" sections are accurate and must be updated alongside any behavior change.
 
 ## Commands
 

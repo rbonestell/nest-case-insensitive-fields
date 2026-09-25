@@ -4,11 +4,11 @@
 
 <p align="center">Case-insensitive request body and query fields for NestJS DTOs, recursively, with no decorators!</p>
 <p align="center">
-  <a href="https://www.npmjs.com/package/nestjs-case-insensitive-fields" target="_blank"><img alt="NPM Version" src="https://img.shields.io/npm/v/nestjs-case-insensitive-fields?logo=npm&logoColor=white"></a>
-  <a href="https://github.com/rbonestell/nestjs-case-insensitive-fields/actions/workflows/build.yml?query=branch%3Amain" target="_blank"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/rbonestell/nestjs-case-insensitive-fields/build.yml?logo=typescript&logoColor=white"></a>
-  <a href="https://github.com/rbonestell/nestjs-case-insensitive-fields/actions/workflows/test.yml?query=branch%3Amain" target="_blank"><img alt="Test Results" src="https://img.shields.io/github/actions/workflow/status/rbonestell/nestjs-case-insensitive-fields/test.yml?branch=main&logo=jest&logoColor=white&label=tests"></a>
-  <a href="https://app.codecov.io/gh/rbonestell/nestjs-case-insensitive-fields/tree/main/src" target="_blank"><img alt="Test Coverage" src="https://img.shields.io/codecov/c/github/rbonestell/nestjs-case-insensitive-fields?logo=codecov&logoColor=white"></a>
-  <a href="https://github.com/rbonestell/nestjs-case-insensitive-fields/blob/main/LICENSE" target="_blank"><img alt="GitHub License" src="https://img.shields.io/github/license/rbonestell/nestjs-case-insensitive-fields?color=71C347">
+  <a href="https://www.npmjs.com/package/nest-case-insensitive-fields" target="_blank"><img alt="NPM Version" src="https://img.shields.io/npm/v/nest-case-insensitive-fields?logo=npm&logoColor=white"></a>
+  <a href="https://github.com/rbonestell/nest-case-insensitive-fields/actions/workflows/build.yml?query=branch%3Amain" target="_blank"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/rbonestell/nest-case-insensitive-fields/build.yml?logo=typescript&logoColor=white"></a>
+  <a href="https://github.com/rbonestell/nest-case-insensitive-fields/actions/workflows/test.yml?query=branch%3Amain" target="_blank"><img alt="Test Results" src="https://img.shields.io/github/actions/workflow/status/rbonestell/nest-case-insensitive-fields/test.yml?branch=main&logo=jest&logoColor=white&label=tests"></a>
+  <a href="https://app.codecov.io/gh/rbonestell/nest-case-insensitive-fields/tree/main/src" target="_blank"><img alt="Test Coverage" src="https://img.shields.io/codecov/c/github/rbonestell/nest-case-insensitive-fields?logo=codecov&logoColor=white"></a>
+  <a href="https://github.com/rbonestell/nest-case-insensitive-fields/blob/main/LICENSE" target="_blank"><img alt="GitHub License" src="https://img.shields.io/github/license/rbonestell/nest-case-insensitive-fields?color=71C347">
 </a>
 </p>
 
@@ -34,7 +34,7 @@ A lightweight library that makes incoming request **body** and **query** keys ma
 ## Installation
 
 ```bash
-npm install nestjs-case-insensitive-fields
+npm install nest-case-insensitive-fields
 ```
 
 ## Quick Start
@@ -43,7 +43,7 @@ npm install nestjs-case-insensitive-fields
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { CaseInsensitiveFieldsModule } from 'nestjs-case-insensitive-fields';
+import { CaseInsensitiveFieldsModule } from 'nest-case-insensitive-fields';
 
 @Module({ imports: [CaseInsensitiveFieldsModule] })
 export class AppModule {}
@@ -82,7 +82,7 @@ To apply it to one controller or handler instead of globally, use the intercepto
 
 ```typescript
 import { UseInterceptors } from '@nestjs/common';
-import { CaseInsensitiveFieldsInterceptor } from 'nestjs-case-insensitive-fields';
+import { CaseInsensitiveFieldsInterceptor } from 'nest-case-insensitive-fields';
 
 @UseInterceptors(CaseInsensitiveFieldsInterceptor)
 ```
