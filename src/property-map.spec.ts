@@ -15,6 +15,8 @@ class Dto extends Base {
 	@ValidateNested({ each: true }) @Type(() => Child) kids!: Child[];
 	@ValidateNested() one!: Child; // nested type comes from design:type only
 	@Expose({ name: 'user_name' }) userName!: string;
+	@Expose({ name: 'home_address' }) @Type(() => Child) home!: Child;
+	@Expose() nickname!: string; // bare @Expose, no wire name
 	tags: string[] = []; // undecorated, only discoverable by instantiating
 }
 
@@ -23,6 +25,7 @@ class SwaggerDto {
 	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
 		return {
 			title: { required: true, type: () => String },
+			note: { required: false }, // no type at all
 			items: { required: false, type: () => [Child] },
 			owner: { required: false, type: () => Child },
 		};
@@ -33,6 +36,51 @@ class SwaggerSub extends SwaggerDto {
 	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
 		return { extra: { required: true, type: () => Number } };
 	}
+}
+
+const boom = () => {
+	throw new Error('boom');
+};
+
+class BareType {
+	@ValidateNested() @Type() one!: Child; // @Type() with no function falls back to design:type
+	@IsString() @Type(boom) broken!: string;
+}
+
+class ThrowingFactory {
+	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
+		throw new Error('boom');
+	}
+	@IsString() name!: string;
+}
+
+class NullFactory {
+	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
+		return null as any;
+	}
+	@IsString() name!: string;
+}
+
+class ThrowingTypeFactory {
+	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
+		return {
+			owner: {
+				required: false,
+				type: () => {
+					throw new Error('boom');
+				},
+			},
+		};
+	}
+}
+
+class CaseClash {
+	@IsString() id!: string;
+	@IsString() ID!: string;
+}
+
+class AliasClash {
+	@Expose({ name: 'Nick' }) nick!: string;
 }
 
 class NeedsArgs {
@@ -74,6 +122,52 @@ describe('propertyMap', () => {
 			name: 'user_name',
 		});
 		expect(propertyMap(Dto).get('username')!.name).toBe('userName');
+	});
+
+	it('gives an @Expose alias the nested map of its property', () => {
+		const alias = propertyMap(Dto).get('home_address')!;
+		expect(alias.name).toBe('home_address');
+		expect(alias.nested!()).toBe(propertyMap(Child));
+	});
+
+	it('falls back to design:type when @Type() has no type function', () => {
+		expect(propertyMap(BareType).get('one')!.nested!()).toBe(
+			propertyMap(Child)
+		);
+	});
+
+	it('treats a throwing @Type function as no nested type', () => {
+		expect(propertyMap(BareType).get('broken')!.nested).toBeUndefined();
+	});
+
+	it('ignores a Swagger factory that throws', () => {
+		expect([...propertyMap(ThrowingFactory).keys()]).toEqual(['name']);
+	});
+
+	it('ignores a Swagger factory that returns null', () => {
+		expect([...propertyMap(NullFactory).keys()]).toEqual(['name']);
+	});
+
+	it('treats a throwing Swagger type function as no nested type', () => {
+		const entry = propertyMap(ThrowingTypeFactory).get('owner')!;
+		expect(entry.name).toBe('owner');
+		expect(entry.nested).toBeUndefined();
+	});
+
+	it('collects a bare @Expose property with no alias', () => {
+		expect(propertyMap(Dto).get('nickname')).toEqual({ name: 'nickname' });
+	});
+
+	it('lets the first declared property win when two differ only by case', () => {
+		expect(propertyMap(CaseClash).get('id')!.name).toBe('id');
+	});
+
+	it('lets the property win over an @Expose alias that differs only by case', () => {
+		expect(propertyMap(AliasClash).get('nick')!.name).toBe('nick');
+	});
+
+	it('collects a Swagger property that has no type', () => {
+		expect(propertyMap(SwaggerSub).get('note')).toEqual({ name: 'note' });
 	});
 
 	it('finds undecorated fields by instantiating the class', () => {

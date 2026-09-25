@@ -4,6 +4,7 @@ import {
 	Get,
 	INestApplication,
 	Module,
+	Param,
 	Post,
 	Query,
 	UseInterceptors,
@@ -57,6 +58,12 @@ class TestController {
 	}
 	@Get('items') list(@Query() q: QueryDto) {
 		return q;
+	}
+	@Get('ping') ping() {
+		return { ok: true };
+	}
+	@Get('items/:id') one(@Param('id') id: string) {
+		return { id };
 	}
 	// multer fills req.body after the global interceptor ran; the documented workaround is a method-level interceptor after it
 	@Post('upload')
@@ -173,6 +180,18 @@ describe.each(['express', 'fastify'] as const)('%s adapter', (adapter) => {
 			.send([{ FIRSTNAME: 'x' }]);
 		expect(res.status).toBe(201);
 		expect(res.body).toEqual([{ FIRSTNAME: 'x' }]);
+	});
+
+	it('tolerates handlers with no decorated parameters', async () => {
+		const res = await http().get('/ping');
+		expect(res.status).toBe(200);
+		expect(res.body).toEqual({ ok: true });
+	});
+
+	it('leaves route params alone', async () => {
+		const res = await http().get('/items/ABC');
+		expect(res.status).toBe(200);
+		expect(res.body).toEqual({ id: 'ABC' });
 	});
 
 	it('accepts mixed-case query keys', async () => {

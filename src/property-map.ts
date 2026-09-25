@@ -51,9 +51,8 @@ function build(cls: Type): PropertyMap {
 		names.add(meta.propertyName);
 	}
 
-	// 2. class-transformer @Expose (includes inherited metadata)
+	// 2. class-transformer @Expose (includes inherited metadata; class-level @Expose() is already filtered out)
 	for (const meta of defaultMetadataStorage.getExposedMetadatas(cls)) {
-		if (!meta.propertyName) continue; // class-level @Expose()
 		names.add(meta.propertyName);
 		if (meta.options?.name)
 			aliases.set(meta.options.name, meta.propertyName);
