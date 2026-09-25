@@ -1,12 +1,12 @@
-import { Body, Controller, Get, INestApplication, Module, Post, Query, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, INestApplication, Module, Post, Query, UseInterceptors, ValidationPipe } from '@nestjs/common';
 import { APP_PIPE } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
+import { ExpressAdapter, FileInterceptor } from '@nestjs/platform-express';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
 import request from 'supertest';
-import { CaseInsensitiveFieldsModule } from '../src';
+import { CaseInsensitiveFieldsInterceptor, CaseInsensitiveFieldsModule } from '../src';
 
 class Child {
   @IsString() childName!: string;
@@ -40,6 +40,10 @@ class TestController {
   }
   @Get('items') list(@Query() q: QueryDto) {
     return q;
+  }
+  // multer fills req.body after the global interceptor ran; the documented workaround is a method-level interceptor after it
+  @Post('upload') @UseInterceptors(FileInterceptor('file'), CaseInsensitiveFieldsInterceptor) upload(@Body() dto: CreateDto) {
+    return dto;
   }
 }
 
@@ -96,7 +100,8 @@ describe.each(['express', 'fastify'] as const)('%s adapter', (adapter) => {
   });
 
   it('does not crash on an empty body', async () => {
-    const res = await http().post('/items').set('content-type', 'application/json').send('');
+    // no body and no content-type: reaches the interceptor with req.body undefined on both adapters
+    const res = await http().post('/items');
     expect(res.status).toBe(400);
   });
 
@@ -128,6 +133,23 @@ describe.each(['express', 'fastify'] as const)('%s adapter', (adapter) => {
     const res = await http().get('/items?SEARCH=wrong&search=right');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ search: 'right' });
+  });
+});
+
+describe('multipart body on Express (multer runs after the global interceptor)', () => {
+  let app: INestApplication;
+  beforeAll(async () => {
+    app = await boot('express');
+  });
+  afterAll(() => app.close());
+
+  it('is rewritten when the interceptor is applied at method level after FileInterceptor', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/upload')
+      .field('FIRSTNAME', 'bob')
+      .attach('file', Buffer.from('x'), 'a.txt');
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ firstName: 'bob' });
   });
 });
 

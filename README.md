@@ -63,6 +63,18 @@ reflected `design:type`. Arrays of nested DTOs are handled.
 
 ## Limits
 
+- Only pipes and handlers see the rewritten keys. Middleware and guards run
+  earlier and see the original keys.
+- Multipart bodies need one extra step. `FileInterceptor` (multer) fills
+  `req.body` *after* the global interceptor has already run, so on those routes
+  apply the interceptor at method level, after the file interceptor:
+
+  ```ts
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file'), CaseInsensitiveFieldsInterceptor)
+  upload(@Body() dto: CreateDto) {}
+  ```
+
 - HTTP only. GraphQL, microservices and WebSockets are untouched.
 - Route params and headers are not rewritten. Param names come from your route
   pattern; headers are already case-insensitive.
