@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "jest",
+    "test:cov": "jest --coverage",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
