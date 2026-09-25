@@ -281,7 +281,7 @@ function rewriteNested(value: unknown, nested: PropertyEntry['nested']): unknown
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx jest test/rewrite.spec.ts`
-Expected: PASS, 15 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 7: Commit**
 
