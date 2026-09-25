@@ -1,3 +1,9 @@
+# AI Agents
+.claude/settings.local.json
+.superpowers
+docs
+temp
+
 node_modules
 dist
 coverage
