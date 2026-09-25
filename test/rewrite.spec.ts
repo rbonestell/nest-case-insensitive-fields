@@ -69,6 +69,11 @@ describe('singleKeyMap', () => {
 
 describe('isPlainObject', () => {
   it.each([[{}], [Object.create(null)], [{ a: 1 }]])('accepts %p', (v) => expect(isPlainObject(v)).toBe(true));
+  it('accepts fast-querystring output (prototype is itself null-prototype)', () => {
+    function Empty() {}
+    Empty.prototype = Object.create(null);
+    expect(isPlainObject(new (Empty as any)())).toBe(true);
+  });
   it.each([[null], [undefined], [[]], ['s'], [1], [new Date()], [new (class X {})()]])('rejects %p', (v) =>
     expect(isPlainObject(v)).toBe(false),
   );

@@ -15,7 +15,8 @@ const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+  // Third case: fast-querystring (Fastify) builds query objects from a prototype that is itself null-prototype.
+  return proto === null || proto === Object.prototype || Object.getPrototypeOf(proto) === null;
 }
 
 export function singleKeyMap(name: string): PropertyMap {
