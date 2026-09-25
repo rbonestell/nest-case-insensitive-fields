@@ -3,6 +3,11 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { CaseInsensitiveFieldsInterceptor } from './interceptor';
 
 @Module({
-  providers: [{ provide: APP_INTERCEPTOR, useClass: CaseInsensitiveFieldsInterceptor }],
+	providers: [
+		{
+			provide: APP_INTERCEPTOR,
+			useClass: CaseInsensitiveFieldsInterceptor,
+		},
+	],
 })
 export class CaseInsensitiveFieldsModule {}

@@ -11,11 +11,13 @@ A small NestJS library (published to npm as `nestjs-case-insensitive-fields`) th
 ```bash
 npm run build                      # tsc -p tsconfig.build.json → dist/ (src only)
 npm test                           # jest, all suites
-npx jest test/rewrite.spec.ts      # one file
+npx jest src/rewrite.spec.ts       # one file
 npx jest -t 'exact-case wins'      # one test by name pattern
+npm run lint                       # eslint src (eslint.config.mjs, type-aware via tsconfig.eslint.json)
+npm run format                     # prettier --write src/**/*.ts (.prettierrc: tabs, single quotes)
 ```
 
-No lint script exists. Tests import from `../src` via ts-jest, so no build is needed to run them. `test/e2e.spec.ts` boots real Nest apps on both Express and Fastify adapters (hence the 15s `testTimeout`); `rewrite.spec.ts` and `property-map.spec.ts` are pure unit tests.
+Specs live next to the source as `src/*.spec.ts` (jest.config.cjs sets `rootDir: ./src`); ts-jest compiles them, so no build is needed to run them. `src/e2e.spec.ts` boots real Nest apps on both Express and Fastify adapters; `rewrite.spec.ts` and `property-map.spec.ts` are pure unit tests. Spec files are excluded from `tsconfig.json` (and so from the build) but included by `tsconfig.eslint.json` so ESLint can type-check them.
 
 ## Architecture
 

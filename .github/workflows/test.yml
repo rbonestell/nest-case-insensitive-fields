@@ -7,11 +7,10 @@ on:
             - main
         paths:
             - 'src/**'
-            - 'test/**'
             - '.github/workflows/test.yml'
             - 'package.json'
             - 'tsconfig.json'
-            - 'jest.config.js'
+            - 'jest.config.cjs'
 jobs:
     test:
         runs-on: ubuntu-latest
