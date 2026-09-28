@@ -58,7 +58,9 @@ export class CaseInsensitiveFieldsInterceptor implements NestInterceptor {
 			const source = SOURCES[Number(key.split(':')[0])];
 			if (!source) continue;
 			const map = this.mapFor(arg, paramtypes[arg.index]);
-			if (map) (maps[source] ??= []).push(map);
+			if (!map) continue;
+			// DTO maps go first so their spelling is canonical when a selector differs only by case.
+			(maps[source] ??= [])[arg.data ? 'push' : 'unshift'](map);
 		}
 
 		for (const [source, list] of Object.entries(maps)) {

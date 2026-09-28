@@ -133,6 +133,10 @@ class TestController {
 	) {
 		return { first, second };
 	}
+	@Post('mixed')
+	mixed(@Body() dto: Child, @Body('ChildName') selected?: string) {
+		return { dto, selected: selected ?? null };
+	}
 	@Post('case') caseProps(@Body() dto: CaseDto) {
 		return dto;
 	}
@@ -304,6 +308,12 @@ describe.each(['express', 'fastify'] as const)('%s adapter', (adapter) => {
 			.send({ firstName: 'one', firstname: 'two' });
 		expect(res.status).toBe(201);
 		expect(res.body).toEqual({ first: 'one', second: 'two' });
+	});
+
+	it('lets the DTO spelling win over a selector that differs only by case', async () => {
+		const res = await http().post('/mixed').send({ CHILDNAME: 'bob' });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ dto: { childName: 'bob' }, selected: null });
 	});
 
 	it('keeps DTO properties that differ only by case as distinct fields', async () => {
