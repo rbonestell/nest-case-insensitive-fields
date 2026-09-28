@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { getMetadataStorage } from 'class-validator';
 import { defaultMetadataStorage } from 'class-transformer/cjs/storage.js';
-import { PropertyEntry, PropertyMap, Type } from './rewrite';
+import { NestedResolver, PropertyMap, Type } from './rewrite';
+
+type TypeMetadata = ReturnType<typeof defaultMetadataStorage.findTypeMetadata>;
 
 const BUILTINS = new Set<unknown>([
 	String,
@@ -36,9 +38,19 @@ export function propertyMap(cls: Type): PropertyMap {
 	return map;
 }
 
+/** The class and its ancestors, nearest first. */
+function* classChain(cls: Type): Generator<Type> {
+	for (
+		let c: unknown = cls;
+		typeof c === 'function' && c !== Function.prototype;
+		c = Object.getPrototypeOf(c)
+	)
+		yield c as Type;
+}
+
 function build(cls: Type): PropertyMap {
 	const names = new Set<string>();
-	const aliases = new Map<string, string>(); // wire name -> property name
+	const wireNames = new Map<string, string>(); // property -> @Expose({ name })
 	const swaggerTypes = new Map<string, Type>();
 
 	// 1. class-validator (includes inherited metadata)
@@ -55,23 +67,25 @@ function build(cls: Type): PropertyMap {
 	for (const meta of defaultMetadataStorage.getExposedMetadatas(cls)) {
 		names.add(meta.propertyName);
 		if (meta.options?.name)
-			aliases.set(meta.options.name, meta.propertyName);
+			wireNames.set(meta.propertyName, meta.options.name);
 	}
 
-	// 3. @nestjs/swagger CLI plugin factory, own class first then ancestors
-	for (
-		let c: any = cls;
-		typeof c === 'function' && c !== Function.prototype;
-		c = Object.getPrototypeOf(c)
-	) {
-		if (
-			!Object.prototype.hasOwnProperty.call(c, SWAGGER_FACTORY) ||
-			typeof c[SWAGGER_FACTORY] !== 'function'
-		)
-			continue;
+	// 3. class-transformer @Type. There is no public way to enumerate it, so read the private per-class map.
+	const typeMetadatas: Map<Type, Map<string, unknown>> | undefined = (
+		defaultMetadataStorage as any
+	)._typeMetadatas;
+	for (const c of classChain(cls))
+		for (const prop of typeMetadatas?.get(c)?.keys() ?? []) names.add(prop);
+
+	// 4. @nestjs/swagger CLI plugin factory, own class first then ancestors
+	for (const c of classChain(cls)) {
+		const factory = Object.prototype.hasOwnProperty.call(c, SWAGGER_FACTORY)
+			? (c as any)[SWAGGER_FACTORY]
+			: undefined;
+		if (typeof factory !== 'function') continue;
 		let meta: Record<string, { type?: () => unknown } | undefined>;
 		try {
-			meta = c[SWAGGER_FACTORY]() ?? {};
+			meta = factory() ?? {};
 		} catch {
 			continue;
 		}
@@ -82,7 +96,7 @@ function build(cls: Type): PropertyMap {
 		}
 	}
 
-	// 4. instance fields (initializers, or all fields when useDefineForClassFields is on)
+	// 5. instance fields (initializers, or all fields when useDefineForClassFields is on)
 	try {
 		for (const key of Object.keys(new cls() as object)) names.add(key);
 	} catch {
@@ -90,44 +104,75 @@ function build(cls: Type): PropertyMap {
 	}
 
 	const map: PropertyMap = new Map();
-	const entries = new Map<string, PropertyEntry>();
 	for (const name of names) {
-		const nestedCls =
-			transformerType(cls, name) ??
-			swaggerTypes.get(name) ??
-			reflectedType(cls, name);
-		const entry: PropertyEntry = nestedCls
-			? { name, nested: () => propertyMap(nestedCls) }
-			: { name };
-		entries.set(name, entry);
-		const key = name.toLowerCase();
-		if (!map.has(key)) map.set(key, entry);
-	}
-	for (const [wire, prop] of aliases) {
-		const key = wire.toLowerCase();
-		if (map.has(key)) continue;
-		const base = entries.get(prop);
-		map.set(
-			key,
-			base?.nested ? { name: wire, nested: base.nested } : { name: wire }
-		);
+		const wire = wireNames.get(name);
+		// class-transformer only reads the wire key of an @Expose({ name }) property, so every spelling routes there
+		const canonical = wire ?? name;
+		const key = canonical.toLowerCase();
+		let entry = map.get(key);
+		if (!entry) {
+			entry = { name: canonical, exact: [canonical] };
+			map.set(key, entry);
+		} else if (!entry.exact!.includes(canonical)) {
+			entry.exact!.push(canonical);
+		}
+		if (!entry.nested) {
+			const resolver = resolverFor(cls, name, swaggerTypes.get(name));
+			if (resolver) entry.nested = resolver;
+		}
+		if (Reflect.getMetadata('design:type', cls.prototype, name) === Map)
+			entry.dictionary = true;
+		if (wire && !map.has(name.toLowerCase()))
+			map.set(name.toLowerCase(), entry);
 	}
 	return map;
 }
 
-function transformerType(cls: Type, prop: string): Type | undefined {
+function resolverFor(
+	cls: Type,
+	prop: string,
+	swagger: Type | undefined
+): NestedResolver | undefined {
 	const meta = defaultMetadataStorage.findTypeMetadata(cls, prop);
-	if (!meta?.typeFunction) return undefined;
+	const fallback = swagger ?? reflectedType(cls, prop);
+	if (!meta) return fallback ? () => propertyMap(fallback) : undefined;
+	const discriminator = meta.options?.discriminator;
+	return (child, parent) => {
+		let type: unknown;
+		if (discriminator?.property && discriminator.subTypes) {
+			const value = lookup(child, discriminator.property);
+			type = discriminator.subTypes.find(
+				(subType) => subType.name === value
+			)?.value;
+		}
+		if (!isUserClass(type)) type = callTypeFunction(meta, parent, prop);
+		if (!isUserClass(type)) type = fallback;
+		return isUserClass(type) ? propertyMap(type) : undefined;
+	};
+}
+
+function callTypeFunction(
+	meta: TypeMetadata,
+	parent: Record<string, unknown>,
+	prop: string
+): unknown {
+	const options = { newObject: {}, object: parent, property: prop };
 	try {
-		const t = meta.typeFunction({
-			newObject: {},
-			object: {},
-			property: prop,
-		});
-		return isUserClass(t) ? t : undefined;
+		return meta.typeFunction
+			? meta.typeFunction(options)
+			: meta.reflectedType;
 	} catch {
 		return undefined;
 	}
+}
+
+/** Case-insensitive own-property lookup; an exact key wins. */
+function lookup(obj: Record<string, unknown>, prop: string): unknown {
+	if (Object.prototype.hasOwnProperty.call(obj, prop)) return obj[prop];
+	const key = Object.keys(obj).find(
+		(k) => k.toLowerCase() === prop.toLowerCase()
+	);
+	return key === undefined ? undefined : obj[key];
 }
 
 function swaggerType(fn: (() => unknown) | undefined): Type | undefined {

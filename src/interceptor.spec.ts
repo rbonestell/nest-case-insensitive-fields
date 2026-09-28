@@ -15,6 +15,22 @@ describe('CaseInsensitiveFieldsInterceptor', () => {
 		expect(interceptor.intercept(context, next)).toBe(handled);
 	});
 
+	it('falls back to the function name when the handler is not on the controller prototype', () => {
+		class PlainController {}
+		const req = { body: { FIRSTNAME: 'x' } };
+		const interceptor = new CaseInsensitiveFieldsInterceptor();
+		const context = {
+			getType: () => 'http',
+			getClass: () => PlainController,
+			getHandler: () => function detached() {},
+			switchToHttp: () => ({ getRequest: () => req }),
+		} as any;
+		const next = { handle: () => 'handled' } as any;
+
+		expect(interceptor.intercept(context, next)).toBe('handled');
+		expect(req.body).toEqual({ FIRSTNAME: 'x' });
+	});
+
 	it('is a no-op for handlers compiled without decorator metadata', () => {
 		class PlainController {
 			handle() {}

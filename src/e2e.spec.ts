@@ -14,7 +14,7 @@ import { APP_PIPE } from '@nestjs/core';
 import { ExpressAdapter, FileInterceptor } from '@nestjs/platform-express';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { Type } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
 import * as request from 'supertest';
 import {
@@ -35,6 +35,65 @@ class CreateDto {
 	@Type(() => Child)
 	// eslint-disable-next-line indent -- core indent rule mis-measures a property after multi-line decorators
 	kids?: Child[];
+}
+
+class AliasDto {
+	@Expose({ name: 'USERNAME' }) @IsString() userName!: string;
+}
+
+class CaseDto {
+	@IsString() id!: string;
+	@IsString() ID!: string;
+}
+
+class UpperChild {
+	@IsString() CHILDNAME!: string;
+}
+
+const dynamicChildType = ({ object }: { object: any }) =>
+	object.kind === 'upper' ? UpperChild : Child;
+
+class DynamicDto {
+	@IsString() kind!: string;
+	@ValidateNested() @Type(dynamicChildType) child!: Child | UpperChild;
+}
+
+class MapDto {
+	@ValidateNested() @Type(() => Child) entries!: Map<string, Child>;
+}
+
+class GridDto {
+	@ValidateNested({ each: true }) @Type(() => Child) grid!: Child[][];
+}
+
+class Animal {
+	@IsString() type!: string;
+}
+
+class Dog extends Animal {
+	@IsString() dogName!: string;
+}
+
+const petOptions = {
+	discriminator: {
+		property: 'type',
+		subTypes: [{ value: Dog, name: 'dog' }],
+	},
+	keepDiscriminatorProperty: true,
+};
+
+class PetDto {
+	@ValidateNested() @Type(() => Animal, petOptions) pet!: Animal;
+}
+
+/** Replaces the method with a differently named function, as logging/retry decorators do. */
+function Wrap(): MethodDecorator {
+	return (_target, _key, descriptor: any) => {
+		const original = descriptor.value;
+		descriptor.value = function differentName(...args: any[]) {
+			return original.apply(this, args);
+		};
+	};
 }
 
 class QueryDto {
@@ -64,6 +123,39 @@ class TestController {
 	}
 	@Get('items/:id') one(@Param('id') id: string) {
 		return { id };
+	}
+	@Post('alias') alias(@Body() dto: AliasDto) {
+		return dto;
+	}
+	@Post('two-selectors') twoSelectors(
+		@Body('firstName') first: string,
+		@Body('firstname') second: string
+	) {
+		return { first, second };
+	}
+	@Post('case') caseProps(@Body() dto: CaseDto) {
+		return dto;
+	}
+	@Post('selector-dto') selectorDto(@Body('payload') dto: Child) {
+		return dto;
+	}
+	@Post('empty-selector') emptySelector(@Body('') dto: Child) {
+		return dto;
+	}
+	@Post('wrapped') @Wrap() wrapped(@Body() dto: Child) {
+		return dto;
+	}
+	@Post('grid') grid(@Body() dto: GridDto) {
+		return dto;
+	}
+	@Post('pet') pet(@Body() dto: PetDto) {
+		return dto;
+	}
+	@Post('dynamic') dynamic(@Body() dto: DynamicDto) {
+		return dto;
+	}
+	@Post('map') map(@Body() dto: MapDto) {
+		return { entries: Object.fromEntries(dto.entries) };
 	}
 	// multer fills req.body after the global interceptor ran; the documented workaround is a method-level interceptor after it
 	@Post('upload')
@@ -192,6 +284,123 @@ describe.each(['express', 'fastify'] as const)('%s adapter', (adapter) => {
 		const res = await http().get('/items/ABC');
 		expect(res.status).toBe(200);
 		expect(res.body).toEqual({ id: 'ABC' });
+	});
+
+	it('routes every spelling of an @Expose-aliased property to its wire name', async () => {
+		const wire = await http().post('/alias').send({ USERNAME: 'bob' });
+		expect(wire.status).toBe(201);
+		expect(wire.body).toEqual({ userName: 'bob' });
+		const property = await http().post('/alias').send({ userName: 'bob' });
+		expect(property.status).toBe(201);
+		expect(property.body).toEqual({ userName: 'bob' });
+		const other = await http().post('/alias').send({ UserName: 'bob' });
+		expect(other.status).toBe(201);
+		expect(other.body).toEqual({ userName: 'bob' });
+	});
+
+	it('serves two selectors that differ only by case from the same body', async () => {
+		const res = await http()
+			.post('/two-selectors')
+			.send({ firstName: 'one', firstname: 'two' });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ first: 'one', second: 'two' });
+	});
+
+	it('keeps DTO properties that differ only by case as distinct fields', async () => {
+		const both = await http().post('/case').send({ id: 'one', ID: 'two' });
+		expect(both.status).toBe(201);
+		expect(both.body).toEqual({ id: 'one', ID: 'two' });
+		const variant = await http().post('/case').send({ Id: 'x', ID: 'y' });
+		expect(variant.status).toBe(201);
+		expect(variant.body).toEqual({ id: 'x', ID: 'y' });
+	});
+
+	it('normalizes a DTO selected with @Body(field)', async () => {
+		const res = await http()
+			.post('/selector-dto')
+			.send({ PAYLOAD: { CHILDNAME: 'bob' } });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ childName: 'bob' });
+	});
+
+	it('treats an empty selector as the whole body, as Nest does', async () => {
+		const res = await http()
+			.post('/empty-selector')
+			.send({ CHILDNAME: 'bob' });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ childName: 'bob' });
+	});
+
+	it('still works when a decorator replaced the handler with a differently named function', async () => {
+		const res = await http().post('/wrapped').send({ CHILDNAME: 'bob' });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ childName: 'bob' });
+	});
+
+	it('normalizes arrays of arrays of DTOs', async () => {
+		const res = await http()
+			.post('/grid')
+			.send({ GRID: [[{ CHILDNAME: 'bob' }]] });
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({ grid: [[{ childName: 'bob' }]] });
+	});
+
+	it('normalizes the discriminator-selected subtype, even with a mis-cased discriminator key', async () => {
+		const exact = await http()
+			.post('/pet')
+			.send({ pet: { type: 'dog', DOGNAME: 'rex' } });
+		expect(exact.status).toBe(201);
+		expect(exact.body).toEqual({ pet: { type: 'dog', dogName: 'rex' } });
+		const cased = await http()
+			.post('/pet')
+			.send({ PET: { TYPE: 'dog', DOGNAME: 'rex' } });
+		expect(cased.status).toBe(201);
+		expect(cased.body).toEqual({ pet: { type: 'dog', dogName: 'rex' } });
+	});
+
+	it('evaluates request-dependent @Type callbacks against the real (renamed) parent', async () => {
+		const exact = await http()
+			.post('/dynamic')
+			.send({ kind: 'upper', child: { CHILDNAME: 'x' } });
+		expect(exact.status).toBe(201);
+		expect(exact.body).toEqual({
+			kind: 'upper',
+			child: { CHILDNAME: 'x' },
+		});
+		const cased = await http()
+			.post('/dynamic')
+			.send({ KIND: 'upper', CHILD: { childname: 'x' } });
+		expect(cased.status).toBe(201);
+		expect(cased.body).toEqual({
+			kind: 'upper',
+			child: { CHILDNAME: 'x' },
+		});
+		const lower = await http()
+			.post('/dynamic')
+			.send({ kind: 'lower', child: { CHILDNAME: 'x' } });
+		expect(lower.status).toBe(201);
+		expect(lower.body).toEqual({
+			kind: 'lower',
+			child: { childName: 'x' },
+		});
+	});
+
+	it('keeps dictionary keys of a Map property and normalizes its values', async () => {
+		const res = await http()
+			.post('/map')
+			.send({
+				ENTRIES: {
+					CHILDNAME: { CHILDNAME: 'one' },
+					childName: { childName: 'two' },
+				},
+			});
+		expect(res.status).toBe(201);
+		expect(res.body).toEqual({
+			entries: {
+				CHILDNAME: { childName: 'one' },
+				childName: { childName: 'two' },
+			},
+		});
 	});
 
 	it('accepts mixed-case query keys', async () => {

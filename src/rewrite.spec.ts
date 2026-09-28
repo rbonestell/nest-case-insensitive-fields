@@ -1,4 +1,11 @@
-import { rewrite, singleKeyMap, isPlainObject, PropertyMap } from './rewrite';
+import {
+	rewrite,
+	singleKeyMap,
+	mergeMaps,
+	isPlainObject,
+	PropertyEntry,
+	PropertyMap,
+} from './rewrite';
 
 const childMap: PropertyMap = new Map([['childname', { name: 'childName' }]]);
 const map: PropertyMap = new Map([
@@ -77,6 +84,131 @@ describe('rewrite', () => {
 		const input = { FIRSTNAME: 'a' };
 		rewrite(input, map);
 		expect(input).toEqual({ FIRSTNAME: 'a' });
+	});
+});
+
+describe('rewrite with exact spellings, resolvers and dictionaries', () => {
+	const idMap: PropertyMap = new Map([
+		['id', { name: 'id', exact: ['id', 'ID'] }],
+	]);
+
+	it('keeps every exact spelling and collapses only non-exact variants', () => {
+		expect(rewrite({ id: 'a', ID: 'b' }, idMap)).toEqual({
+			id: 'a',
+			ID: 'b',
+		});
+		expect(rewrite({ Id: 'a', ID: 'b' }, idMap)).toEqual({
+			id: 'a',
+			ID: 'b',
+		});
+	});
+
+	it('recurses through arrays of arrays', () => {
+		expect(rewrite({ KIDS: [[{ CHILDNAME: 'a' }], 'x'] }, map)).toEqual({
+			kids: [[{ childName: 'a' }], 'x'],
+		});
+	});
+
+	it('rewrites dictionary values but never dictionary keys', () => {
+		const dict: PropertyMap = new Map([
+			[
+				'entries',
+				{ name: 'entries', dictionary: true, nested: () => childMap },
+			],
+		]);
+		expect(
+			rewrite(
+				{ ENTRIES: { CHILDNAME: { CHILDNAME: 1 }, other: 'x' } },
+				dict
+			)
+		).toEqual({
+			entries: { CHILDNAME: { childName: 1 }, other: 'x' },
+		});
+	});
+
+	it('drops prototype-polluting keys inside dictionaries', () => {
+		const dict: PropertyMap = new Map([
+			[
+				'entries',
+				{ name: 'entries', dictionary: true, nested: () => childMap },
+			],
+		]);
+		const input = JSON.parse(
+			'{"entries": {"__proto__": {"polluted": 1}, "ok": {"CHILDNAME": 1}}}'
+		);
+		expect(rewrite(input, dict)).toEqual({
+			entries: { ok: { childName: 1 } },
+		});
+		expect(({} as any).polluted).toBeUndefined();
+	});
+
+	it('gives resolvers the raw child and the already renamed parent', () => {
+		const seen: unknown[] = [];
+		const m: PropertyMap = new Map<string, PropertyEntry>([
+			['kind', { name: 'kind' }],
+			[
+				'child',
+				{
+					name: 'child',
+					nested: (child, parent) => {
+						seen.push([{ ...child }, { ...parent }]);
+						return childMap;
+					},
+				},
+			],
+		]);
+		expect(rewrite({ CHILD: { CHILDNAME: 'a' }, KIND: 'k' }, m)).toEqual({
+			child: { childName: 'a' },
+			kind: 'k',
+		});
+		expect(seen).toEqual([
+			[{ CHILDNAME: 'a' }, { child: { CHILDNAME: 'a' }, kind: 'k' }],
+		]);
+	});
+
+	it('leaves a nested value alone when the resolver returns nothing', () => {
+		const m: PropertyMap = new Map([
+			['child', { name: 'child', nested: () => undefined }],
+		]);
+		expect(rewrite({ CHILD: { X: 1 } }, m)).toEqual({ child: { X: 1 } });
+	});
+});
+
+describe('mergeMaps', () => {
+	it('unions exact spellings and keeps the first nested resolver without mutating inputs', () => {
+		const a: PropertyMap = new Map([
+			['firstname', { name: 'firstName', nested: () => childMap }],
+		]);
+		const b: PropertyMap = new Map([
+			['firstname', { name: 'firstname' }],
+			['other', { name: 'other' }],
+		]);
+		const merged = mergeMaps([a, b]);
+		expect(merged.get('firstname')).toEqual({
+			name: 'firstName',
+			exact: ['firstName', 'firstname'],
+			nested: expect.any(Function),
+		});
+		expect(merged.get('other')).toEqual({
+			name: 'other',
+			exact: ['other'],
+		});
+		expect(a.get('firstname')!.exact).toBeUndefined();
+	});
+
+	it('deduplicates spellings and propagates the dictionary flag', () => {
+		const a: PropertyMap = new Map([
+			['x', { name: 'x', nested: () => childMap }],
+		]);
+		const b: PropertyMap = new Map([
+			['x', { name: 'x', dictionary: true }],
+		]);
+		expect(mergeMaps([a, a, b]).get('x')).toEqual({
+			name: 'x',
+			exact: ['x'],
+			nested: expect.any(Function),
+			dictionary: true,
+		});
 	});
 });
 

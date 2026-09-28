@@ -102,28 +102,30 @@ upload(@Body() dto: CreateUserDto) {}
 A global interceptor runs before any pipe. For each `@Body()` / `@Query()` parameter it looks up the DTO class from Nest's route metadata, builds a cached map of lowercase key → property name for that class, and rewrites the request object in place. Property names come from:
 
 1. class-validator decorators (inherited ones included)
-2. class-transformer `@Type` / `@Expose` metadata (an `@Expose({ name })` wire name is matched too)
+2. class-transformer `@Type` / `@Expose` metadata. Every spelling of an `@Expose({ name })` property, including its own property name, is routed to the wire name, because that is the only key class-transformer reads for it
 3. the `@nestjs/swagger` CLI plugin's generated metadata, when enabled
 4. the class's own instance fields (fields with initializers, or all fields when TypeScript's `useDefineForClassFields` is on, i.e. `target` >= ES2022)
 
-Nested DTOs are found through `@Type(() => Child)`, the Swagger plugin, or the reflected `design:type`. Arrays of nested DTOs are handled.
+Nested DTOs are found through `@Type(() => Child)`, the Swagger plugin, or the reflected `design:type`. Request-dependent `@Type` callbacks and `discriminator` options are resolved per value, against the same data class-transformer will see. Arrays at any depth and `Map<string, Child>` dictionaries are handled; dictionary keys are never rewritten.
 
-`@Body('field')` and `@Query('field')` are matched case-insensitively as well.
+`@Body('field')` and `@Query('field')` are matched case-insensitively as well, and a DTO-typed selected parameter is normalized like any other. All parameters that read the same source are merged and the source is rewritten once.
 
 ### Rules
 
 - Keys that match no known property are passed through unchanged, so `whitelist` still strips them.
-- If the client sends both `firstName` and `FIRSTNAME`, the exact-case one wins.
+- An exact spelling of a declared property is always kept and never renamed. `{ firstName, FIRSTNAME }` keeps `firstName`; a DTO declaring both `id` and `ID` receives both. Only spellings that match no declared property exactly are renamed, to the first declared one.
 - `__proto__`, `constructor` and `prototype` keys are dropped.
 - Bodies that are not plain objects (arrays, primitives, missing) are left alone.
 
 ### Limits
 
-- Only pipes and handlers see the rewritten keys. Middleware and guards run earlier and see the original keys.
+- Only pipes and handlers see the rewritten keys. Middleware and guards run earlier and see the original keys. **Adoption warning:** authorization, tenant selection or field blocklists that read raw body or query keys in middleware or guards will disagree with what the handler receives. Move such checks to the validated DTO, or resolve names the same way this library does.
 - Multipart bodies need the method-level interceptor shown above.
 - HTTP only. GraphQL, microservices and WebSockets are untouched.
 - Route params and headers are not rewritten. Param names come from your route pattern; headers are already case-insensitive.
-- A field with no decorator, no initializer and no Swagger plugin metadata is invisible at runtime under the default Nest `tsconfig` (`target: ES2021`), so it keeps whatever case the client sent.
+- A field with no class-validator, `@Type` or `@Expose` decorator, no initializer and no Swagger plugin metadata is invisible at runtime under the default Nest `tsconfig` (`target: ES2021`), so it keeps whatever case the client sent.
+- Each DTO class is instantiated once (with no arguments, errors ignored) the first time it is seen, to discover fields with initializers. A DTO whose constructor has side effects will see one extra construction.
+- `@Type`-only properties are discovered through a private class-transformer map, since it has no public enumeration API. If a future class-transformer version renames it, those properties fall back to the other sources.
 - Nested query objects (`?filter[NAME]=x`) only exist if your app enables the extended query parser (`app.set('query parser', 'extended')` on Express 5).
 
 ## API Reference

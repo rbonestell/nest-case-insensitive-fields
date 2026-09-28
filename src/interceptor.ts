@@ -8,9 +8,18 @@ import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants.js';
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum.js';
 import { Observable } from 'rxjs';
 import { isUserClass, propertyMap } from './property-map';
-import { isPlainObject, PropertyMap, rewrite, singleKeyMap } from './rewrite';
+import {
+	isPlainObject,
+	mergeMaps,
+	PropertyMap,
+	rewrite,
+	singleKeyMap,
+	Type,
+} from './rewrite';
 
-const SOURCES: Record<number, 'body' | 'query'> = {
+type Source = 'body' | 'query';
+
+const SOURCES: Record<number, Source> = {
 	[RouteParamtypes.BODY]: 'body',
 	[RouteParamtypes.QUERY]: 'query',
 };
@@ -34,29 +43,30 @@ export class CaseInsensitiveFieldsInterceptor implements NestInterceptor {
 		const controller = context.getClass();
 		const handler = context.getHandler();
 		const req = context.switchToHttp().getRequest();
+		const method = methodName(controller, handler);
 		const args: Record<string, RouteArg> =
-			Reflect.getMetadata(
-				ROUTE_ARGS_METADATA,
-				controller,
-				handler.name
-			) ?? {};
+			Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, method) ?? {};
 		const paramtypes: unknown[] =
 			Reflect.getMetadata(
 				'design:paramtypes',
 				controller.prototype,
-				handler.name
+				method
 			) ?? [];
 
+		const maps: Partial<Record<Source, PropertyMap[]>> = {};
 		for (const [key, arg] of Object.entries(args)) {
 			const source = SOURCES[Number(key.split(':')[0])];
 			if (!source) continue;
+			const map = this.mapFor(arg, paramtypes[arg.index]);
+			if (map) (maps[source] ??= []).push(map);
+		}
+
+		for (const [source, list] of Object.entries(maps)) {
 			const current = req[source];
 			if (!isPlainObject(current)) continue;
-			const map = this.mapFor(arg, paramtypes[arg.index]);
-			if (!map) continue;
 			// Own property: shadows Express 5's re-parsing `query` getter; plain assignment on Fastify.
 			Object.defineProperty(req, source, {
-				value: rewrite(current, map),
+				value: rewrite(current, mergeMaps(list)),
 				writable: true,
 				configurable: true,
 				enumerable: true,
@@ -65,7 +75,28 @@ export class CaseInsensitiveFieldsInterceptor implements NestInterceptor {
 	}
 
 	private mapFor(arg: RouteArg, paramtype: unknown): PropertyMap | undefined {
-		if (typeof arg.data === 'string') return singleKeyMap(arg.data);
-		return isUserClass(paramtype) ? propertyMap(paramtype) : undefined;
+		const dto = isUserClass(paramtype) ? propertyMap(paramtype) : undefined;
+		// Nest treats a falsy selector as the whole body/query.
+		if (typeof arg.data === 'string' && arg.data)
+			return singleKeyMap(arg.data, dto && (() => dto));
+		return dto;
 	}
+}
+
+/** Nest keys route metadata by the prototype property name, which a wrapping decorator may not preserve in `fn.name`. */
+function methodName(
+	controller: Type,
+	handler: { readonly name: string }
+): string {
+	for (
+		let proto = controller.prototype;
+		proto && proto !== Object.prototype;
+		proto = Object.getPrototypeOf(proto)
+	) {
+		for (const name of Object.getOwnPropertyNames(proto)) {
+			if (Object.getOwnPropertyDescriptor(proto, name)?.value === handler)
+				return name;
+		}
+	}
+	return handler.name;
 }
