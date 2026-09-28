@@ -126,6 +126,7 @@ Nested DTOs are found through `@Type(() => Child)`, the Swagger plugin, or the r
 - A field with no class-validator, `@Type` or `@Expose` decorator, no initializer and no Swagger plugin metadata is invisible at runtime under the default Nest `tsconfig` (`target: ES2021`), so it keeps whatever case the client sent.
 - Each DTO class is instantiated once (with no arguments, errors ignored) the first time it is seen, to discover fields with initializers. A DTO whose constructor has side effects will see one extra construction.
 - `@Type`-only properties are discovered through a private class-transformer map, since it has no public enumeration API. If a future class-transformer version renames it, those properties fall back to the other sources.
+- Zod and Joi are left untouched: requests validated by them behave exactly as without this library. `nestjs-zod` DTOs (`createZodDto`) get case-insensitive **top-level** keys through their Swagger metadata factory; nested zod objects keep the client's case. Raw zod or Joi schemas passed to a pipe, and `nestjs-joi` `@JoiSchema` classes, expose no readable field list, so their keys keep the client's case.
 - Nested query objects (`?filter[NAME]=x`) only exist if your app enables the extended query parser (`app.set('query parser', 'extended')` on Express 5).
 
 ## API Reference

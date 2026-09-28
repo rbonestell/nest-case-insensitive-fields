@@ -74,6 +74,18 @@ class ThrowingTypeFactory {
 	}
 }
 
+// shaped like nestjs-zod's createZodDto(): the factory reads the schema through `this`
+class ZodLikeBase {
+	static schema = { shape: { firstName: {} } };
+	static _OPENAPI_METADATA_FACTORY(): Record<string, any> {
+		return Object.fromEntries(
+			Object.keys(this.schema.shape).map((k) => [k, { type: 'string' }])
+		);
+	}
+}
+
+class ZodLikeDto extends ZodLikeBase {}
+
 class CaseClash {
 	@IsString() id!: string;
 	@IsString() ID!: string;
@@ -192,6 +204,10 @@ describe('propertyMap', () => {
 
 	it('ignores a Swagger factory that returns null', () => {
 		expect([...propertyMap(NullFactory).keys()]).toEqual(['name']);
+	});
+
+	it('calls a Swagger factory as a method of its class', () => {
+		expect(describeMap(ZodLikeDto)).toEqual(['firstname=firstName']);
 	});
 
 	it('treats a throwing Swagger type function as no nested type', () => {

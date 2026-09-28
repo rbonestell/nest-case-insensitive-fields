@@ -85,7 +85,8 @@ function build(cls: Type): PropertyMap {
 		if (typeof factory !== 'function') continue;
 		let meta: Record<string, { type?: () => unknown } | undefined>;
 		try {
-			meta = factory() ?? {};
+			// called as a method, like @nestjs/swagger does: nestjs-zod's factory reads `this.schema`
+			meta = factory.call(c) ?? {};
 		} catch {
 			continue;
 		}
