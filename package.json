@@ -4,7 +4,7 @@
   "description": "Case-insensitive request body and query fields for NestJS DTOs, recursively, with no decorators.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rbonestell/nestjs-case-insensitive-fields.git"
+    "url": "https://github.com/rbonestell/nest-case-insensitive-fields"
   },
   "homepage": "https://github.com/rbonestell/nestjs-case-insensitive-fields#readme",
   "bugs": {
